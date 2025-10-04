@@ -4,13 +4,8 @@ import sys
 
 import typer
 
-<<<<<<< HEAD:mrg_helm/utils/build.py
 from mrg_helm.utils.protogen import build_protobuf
-from mrg_helm.utils.pio import pio_build
-=======
-from autohelm.utils.protogen import build_protobuf
-from autohelm.utils import pio
->>>>>>> refs/remotes/origin/v2.y:autohelm/utils/build.py
+from mrg_helm.utils import pio
 
 app = typer.Typer(
     help='Build firmware',
