@@ -1,6 +1,6 @@
 from platformio.run.cli import cli as run_cli
 
-from autohelm import PACKAGE_DIR
+from mrg_helm import PACKAGE_DIR
 
 args = ['--project-dir', PACKAGE_DIR]
 

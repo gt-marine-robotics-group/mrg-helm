@@ -2,12 +2,12 @@
 
 import typer
 
-from autohelm.utils.build import app as build_app
-from autohelm.utils.udev import app as udev_app
+from mrg_helm.utils.build import app as build_app
+from mrg_helm.utils.udev import app as udev_app
 
-from autohelm.run import app as run_app
+from mrg_helm.run import app as run_app
 
-from autohelm.sim.sim import app as sim_app
+from mrg_helm.sim.sim import app as sim_app
 
 cli = typer.Typer(no_args_is_help=True)
 

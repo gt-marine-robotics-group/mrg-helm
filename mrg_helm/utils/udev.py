@@ -4,7 +4,7 @@ from urllib.request import urlopen
 
 import typer
 
-from autohelm import CACHE_DIR
+from mrg_helm import CACHE_DIR
 
 TEENSY_UDEV_URL = 'https://www.pjrc.com/teensy/00-teensy.rules'
 TEENSY_UDEV_FILE = CACHE_DIR / '00-teensy.rules'
@@ -20,7 +20,7 @@ def udev(ctx: typer.Context):
         typer.echo(ctx.get_help())
         typer.echo(
             'Recommended usage: \n' \
-            "sudo sh -c 'autohelm udev [COMMAND] >> /etc/udev/rules.d/<NAME>.rules"
+            "sudo sh -c 'mrg_helm udev [COMMAND] >> /etc/udev/rules.d/<NAME>.rules"
         )
         raise typer.Exit()
 

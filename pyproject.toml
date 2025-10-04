@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "autohelm"
+name = "mrg-helm"
 version = "2.0.1"
 dependencies = [
   "typer",
@@ -26,7 +26,7 @@ readme = "README.md"
 [project.urls]
 
 [project.scripts]
-autohelm = "autohelm.app:cli"
+mrg-helm = "mrg_helm.app:cli"
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -34,19 +34,19 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 dependencies = ["hatch-build-scripts", "protobuf", "nanopb", "grpcio-tools"]
 include = [
-  "autohelm/*.py",
-  "autohelm/sim/**",
-  "autohelm/pb/**",
-  "autohelm/utils/**",
-  "autohelm/comm/**",
+  "mrg_helm/*.py",
+  "mrg_helm/sim/**",
+  "mrg_helm/pb/**",
+  "mrg_helm/utils/**",
+  "mrg_helm/comm/**",
   "firmware",
   "platformio.ini",
   "proto",
 ]
-artifacts = ["autohelm/pb/**"]
+artifacts = ["mrg_helm/pb/**"]
 
 [[tool.hatch.build.targets.wheel.hooks.build-scripts.scripts]]
 commands = [
-    "python autohelm/utils/protogen.py"
+    "python mrg_helm/utils/protogen.py"
 ]
 clean_artifacts = false

@@ -1,9 +1,9 @@
 import typer
 
-from autohelm.comm.serial import send as ser_send
+from mrg_helm.comm.serial import send as ser_send
 
 app = typer.Typer(
-    help='Run Autohelm Driver'
+    help='Run mrg_helm Driver'
 )
 
 @app.command('send')

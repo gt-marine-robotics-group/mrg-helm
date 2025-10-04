@@ -1,10 +1,10 @@
 import typer
 import signal
 
-from autohelm.sim.mockhelm import MockHelm
+from mrg_helm.sim.mockhelm import MockHelm
 
 app = typer.Typer(
-    help='Run Autohelm Simulation'
+    help='Run mrg_helm Simulation'
 )
 
 @app.command('mock')

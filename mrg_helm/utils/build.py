@@ -4,8 +4,8 @@ import sys
 
 import typer
 
-from autohelm.utils.protogen import build_protobuf
-from autohelm.utils.pio import pio_build
+from mrg_helm.utils.protogen import build_protobuf
+from mrg_helm.utils.pio import pio_build
 
 app = typer.Typer(
     help='Build firmware'
@@ -15,11 +15,11 @@ app = typer.Typer(
 def build():
     """Build"""
     typer.echo(typer.style(
-        '[AUTOHELM] Building Protobuf Messages',
+        '[mrg_helm] Building Protobuf Messages',
         fg=typer.colors.BLUE, bold=True))
     build_protobuf()
     typer.echo(typer.style(
-        '[AUTOHELM] Building PlatformIO Project',
+        '[mrg_helm] Building PlatformIO Project',
          fg=typer.colors.BLUE, bold=True))
     pio_build()
 

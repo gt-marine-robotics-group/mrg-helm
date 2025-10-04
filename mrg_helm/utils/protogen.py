@@ -3,13 +3,13 @@ from subprocess import run
 import sys
 
 try:
-    from autohelm import PACKAGE_DIR
+    from mrg_helm import PACKAGE_DIR
 except ImportError:
     PACKAGE_DIR = Path(__file__).resolve().parents[1].parent # Needs to be defined for build
 
 
 PB_DIR = PACKAGE_DIR / 'proto'
-PBGEN_PY = PACKAGE_DIR / 'autohelm' / 'pb'
+PBGEN_PY = PACKAGE_DIR / 'mrg_helm' / 'pb'
 PBGEN_MC = PACKAGE_DIR / 'firmware' / 'lib' / 'pb'
 
 NANOPB_PLUGIN = Path(sys.executable).parent / 'protoc-gen-nanopb'

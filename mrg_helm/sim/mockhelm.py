@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import vserial
-from autohelm.pb.command_pb2 import Command
+from mrg_helm.pb.command_pb2 import Command
 
 class MockHelm:
     def __init__(self, name='mockhelm', directory=Path('/tmp')):
@@ -15,6 +15,9 @@ class MockHelm:
 
     def _read(self, data):
         print(data)
+        msg = Command()
+        msg.ParseFromString(data)
+        print(msg)
 
     def start(self):
         self.vsd.open()
