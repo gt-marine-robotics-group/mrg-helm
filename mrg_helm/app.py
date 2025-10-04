@@ -11,7 +11,9 @@ from mrg_helm.sim.sim import app as sim_app
 
 cli = typer.Typer(no_args_is_help=True)
 
-cli.add_typer(build_app)
+cli.add_typer(build_app,
+              name='firmware')
+
 cli.add_typer(udev_app, 
               name='dev')
 
