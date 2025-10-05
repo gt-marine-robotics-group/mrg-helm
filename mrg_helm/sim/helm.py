@@ -3,8 +3,9 @@ import time
 
 import vserial
 from mrg_helm.pb.command_pb2 import Command
+from mrg_helm.pb.init_pb2 import Init
 from mrg_helm.common.helm import ControlState, ControlLink, ActiveState
-
+from mrg_helm.utils.version import get_short_version
 
 class TemplateHelm:
     """Template for Helm Interface"""
@@ -29,6 +30,10 @@ class TemplateHelm:
     def _read(self, data):
         """Read data"""
         self.parse(data)
+
+    def _send(self, data):
+        """Write data"""
+        self.vsd.send(data)
 
     def start(self):
         """Start simulated helm interface"""
@@ -70,12 +75,20 @@ class SimHelm(TemplateHelm):
         super().__init__(name, directory, hz)
 
     def parse(self, data):
-        msg = Command()
-        msg.ParseFromString(data)
-        print(msg)
+        print(data)
+        # msg = Command()
+        # msg.ParseFromString(data)
+        # print(msg)
 
     def setup(self):
         print('Controller Calibration')
+        print('Initialize connection')
+        
+    def _initialize(self):
+        msg = Init()
+        msg.version = get_short_version()
+        data = msg.SerializeToString()
+        self._send(data)
 
     def loop(self):
-        print('Hi')
+        self._initialize()

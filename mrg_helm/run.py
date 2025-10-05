@@ -1,11 +1,13 @@
 import typer
 
-from mrg_helm.comm.serial import send as ser_send
+from mrg_helm.driver.serial import HelmDriver
 
 app = typer.Typer(
     help='Run mrg_helm Driver'
 )
 
+
 @app.command('send')
 def send():
-    ser_send()
+    hd = HelmDriver()
+    hd.connect()

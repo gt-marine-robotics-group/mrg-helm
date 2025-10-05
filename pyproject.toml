@@ -35,7 +35,7 @@ allow-direct-references = true
 source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "_version.py"
+version-file = "mrg_helm/_version.py"
 
 [tool.hatch.build.targets.wheel]
 dependencies = ["hatch-build-scripts", "protobuf", "nanopb", "grpcio-tools"]
@@ -44,15 +44,11 @@ include = [
   "mrg_helm/sim/**",
   "mrg_helm/pb/**",
   "mrg_helm/utils/**",
-  "mrg_helm/comm/**",
+  "mrg_helm/driver/**",
   "mrg_helm/common/**",
   "firmware",
   "platformio.ini",
-  "proto",
-  ".git/HEAD",
-  ".git/refs/heads/*",
-  ".git/refs/remotes/*",
-  ".git/refs/tags/*"
+  "proto"
 ]
 artifacts = ["mrg_helm/pb/**"]
 

@@ -5,4 +5,4 @@ __pycache__
 **/pb/*
 !mrg_helm/pb/__init__.py
 cache
-_version.py
+**/_version.py

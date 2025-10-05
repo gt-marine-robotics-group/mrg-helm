@@ -4,7 +4,7 @@ import typer
 
 from mrg_helm.utils.build import app as build_app
 from mrg_helm.utils.udev import app as udev_app
-from mrg_helm.utils.version import get_version_hash
+from mrg_helm.utils.version import get_short_version
 
 from mrg_helm.run import app as run_app
 
@@ -17,7 +17,7 @@ def main(
     version: bool = typer.Option(False, "--version", help="Show the version")
 ):
     if version:
-        print(f"Version: {get_version_hash()}")
+        print(f"Version: {get_short_version()}")
         raise typer.Exit()
 
 cli.add_typer(build_app,

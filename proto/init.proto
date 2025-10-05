@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+message Init {
+    string version = 1;
+}
