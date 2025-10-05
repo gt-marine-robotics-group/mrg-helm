@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "mrg-helm"
-version = "2.0.1"
+dynamic = ["version"]
 dependencies = [
   "typer",
   "protobuf",
@@ -31,6 +31,12 @@ mrg-helm = "mrg_helm.app:cli"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
+
 [tool.hatch.build.targets.wheel]
 dependencies = ["hatch-build-scripts", "protobuf", "nanopb", "grpcio-tools"]
 include = [
@@ -39,9 +45,14 @@ include = [
   "mrg_helm/pb/**",
   "mrg_helm/utils/**",
   "mrg_helm/comm/**",
+  "mrg_helm/common/**",
   "firmware",
   "platformio.ini",
   "proto",
+  ".git/HEAD",
+  ".git/refs/heads/*",
+  ".git/refs/remotes/*",
+  ".git/refs/tags/*"
 ]
 artifacts = ["mrg_helm/pb/**"]
 

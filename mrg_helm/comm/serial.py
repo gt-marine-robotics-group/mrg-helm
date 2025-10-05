@@ -2,7 +2,7 @@ import serial
 from mrg_helm.pb.command_pb2 import Command
 
 def send():
-    ser = serial.Serial('/tmp/mockhelm', 115200, timeout=1)
+    ser = serial.Serial('/tmp/mrg-helm', 115200, timeout=1)
     cmd = Command()
     cmd.efforts.extend([0, 0, 1, 2])
 
