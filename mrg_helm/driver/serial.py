@@ -55,7 +55,8 @@ class HelmDriver:
                         self._connected = True
                         print("Connected!")
                 except DecodeError:
-                    pass
+                    print(f'Received {self._buffer} but could not parse.')
+
         
 
     def command(self, commands):

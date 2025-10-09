@@ -78,7 +78,17 @@ class TemplateHelm:
 
 
 class SimHelm(TemplateHelm):
-    """Simulated Helm Interface"""
+    """
+    Simulated Helm Interface
+    
+    This is a simplified model of the firmware.
+    The outputs of the firmware should look vaguely similar.
+    This is not a model-is-the-spec scenario, do not
+    reimplement this exactly in firmware.
+
+    [SIM EXTERNAL] implies a simulated external event
+    [SIM INTERNAL] implies a simulated internal event
+    """
     def __init__(self, name='mrg-helm', 
                  directory=Path('/tmp'),
                  hz=10):
@@ -88,9 +98,9 @@ class SimHelm(TemplateHelm):
 
     def parse(self, data):
         msg = Command()
-        print(f"received {data}")
         try:
             msg.ParseFromString(data)
+            print(f'received {data}')
             self.efforts = msg.efforts
             self._last_serial = time.time()
             self.link_status[ControlLink.SERIAL] = ControlLinkStatus.ACTIVE
@@ -98,7 +108,19 @@ class SimHelm(TemplateHelm):
             pass
 
     def setup(self):
-        print('Controller Calibration')
+        self._calibrate_controller()
+
+    def _calibrate_controller(self):
+        print('[SIM EXTERNAL] Calibrating RC controller', end='', flush=True)
+        time.sleep(1)
+        print('.', end='', flush=True)
+        time.sleep(1)
+        print('.', end='', flush=True)
+        time.sleep(1)
+        print('.')
+        time.sleep(1)
+        print('[SIM INTERNAL] Calibration done')
+        self._send(bytes('======= CALIBRATION COMPLETE - RC READY =======\n', encoding='utf-8'))
         
     def _transmit_config(self):
         """Transmit config"""
