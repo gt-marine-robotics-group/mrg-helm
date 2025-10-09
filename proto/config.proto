@@ -1,5 +1,5 @@
 syntax = "proto3";
 
-message Init {
+message Config {
     string version = 1;
 }

@@ -3,18 +3,23 @@ import time
 
 import vserial
 from mrg_helm.pb.command_pb2 import Command
-from mrg_helm.pb.init_pb2 import Init
-from mrg_helm.common.helm import ControlState, ControlLink, ActiveState
+from mrg_helm.pb.config_pb2 import Config
+from mrg_helm.pb.status_pb2 import Status
+from mrg_helm.common.helm import ControlState, ControlLink, ActiveState, ControlLinkStatus
 from mrg_helm.utils.version import get_short_version
 
 class TemplateHelm:
     """Template for Helm Interface"""
     def __init__(self, name='mrg-helm',
                  directory=Path('/tmp'),
-                 hz=10):
+                 hz=10,
+                 num_efforts=2):
         self.name = name
         self.port = directory / name
         self.frequency = 1.0 / hz
+        self._num_efforts = num_efforts
+        self.efforts = None
+
 
         self.vsd = vserial.VirtualSerialDevice(
             port = self.port,
@@ -22,6 +27,11 @@ class TemplateHelm:
         )
 
         self._running = False
+
+        self.link_status = {
+            ControlLink.SERIAL: ControlLinkStatus.DISCONNECTED,
+            ControlLink.RC: ControlLinkStatus.DISCONNECTED
+        }
 
         self.active_link = ControlLink.SERIAL
         self.control_state = ControlState.MANUAL
@@ -74,21 +84,42 @@ class SimHelm(TemplateHelm):
                  hz=10):
         super().__init__(name, directory, hz)
 
+        self._last_serial = time.time()
+
     def parse(self, data):
-        print(data)
-        # msg = Command()
-        # msg.ParseFromString(data)
-        # print(msg)
+        msg = Command()
+        print(f"received {data}")
+        try:
+            msg.ParseFromString(data)
+            self.efforts = msg.efforts
+            self._last_serial = time.time()
+            self.link_status[ControlLink.SERIAL] = ControlLinkStatus.ACTIVE
+        except:
+            pass
 
     def setup(self):
         print('Controller Calibration')
-        print('Initialize connection')
         
-    def _initialize(self):
-        msg = Init()
+    def _transmit_config(self):
+        """Transmit config"""
+        msg = Config()
         msg.version = get_short_version()
         data = msg.SerializeToString()
         self._send(data)
 
+    def _transmit_status(self):
+        """Transmit status"""
+        msg = Status()
+        msg.control_state = 1
+        data = msg.SerializeToString()
+        self._send(data)
+
     def loop(self):
-        self._initialize()
+        loop_time = time.time()
+
+        if loop_time - self._last_serial > 5:
+            if self.link_status[ControlLink.SERIAL] == ControlLinkStatus.DISCONNECTED:
+                self._transmit_config()
+        else:
+            self._transmit_status()
+        time.sleep(self.frequency)

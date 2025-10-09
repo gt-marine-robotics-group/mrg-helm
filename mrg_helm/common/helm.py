@@ -4,6 +4,13 @@ class ControlLink(Enum):
     RC = auto() # via onboard RC servo pins
     SERIAL = auto() # via serial connection
 
+class ControlLinkStatus(Enum):
+    DISABLED = auto()
+    DISCONNECTED = auto()
+    IDLE = auto()
+    CALIBRATION = auto()
+    ACTIVE = auto()
+
 class ControlState(Enum):
     MANUAL = auto()
     AUTONOMOUS = auto()
