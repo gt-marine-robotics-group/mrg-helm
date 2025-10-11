@@ -25,3 +25,7 @@ This project is divided into 3 main components
 
 ## Quick Start
 
+After installation, run:
+```
+mrg-helm --help
+```
