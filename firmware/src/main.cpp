@@ -6,6 +6,10 @@
 #include "motors.h"
 #include "globals.h"
 
+#include "pb_encode.h"
+#include "pb_decode.h"
+#include "config.pb.h"
+
 RCInput rcInput(g_servo5, g_servo2, g_servo3, g_servo4, g_servo1);
 
 
@@ -16,6 +20,39 @@ enum states {
   AGENT_DISCONNECTED
 } state;
 
+// Protobuf helper, nanopb expects a function for Config
+static bool encode_string(pb_ostream_t *stream, const pb_field_t *field, void * const *arg) {
+  const char *s = (const char*)(*arg);
+  if(!pb_encode_tag_for_field(stream,field)) {
+    return false;
+  }
+  return pb_encode_string(stream, (const pb_byte_t*)s,strlen(s)); 
+}
+
+// Output System -> Teensy Serial
+static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
+  size_t w = 0;
+  while(w < cnt) {
+    w += Serial.write(buf + w, cnt - w);
+  }
+  return true;
+}
+
+static void send_firmware_version() {
+  Config msg = Config_init_default;
+  msg.version.funcs.encode = &encode_string;
+  msg.version.arg = (void*)"1.0.0"; // firmware version (for now)
+
+  pb_ostream_t out = {serial_write, nullptr, SIZE_MAX, 0, nullptr};
+  bool ok = pb_encode_delimited(&out, Config_fields, &msg);
+
+  if (!ok) {
+    Serial.println("Error encoding version message!");
+  } else {
+    Serial.println("Sent firmware version protobuf!");
+  }
+
+}
 
 // Translate RC input to 2 motor system
 void set_motor_2x() {
@@ -75,6 +112,8 @@ void setup() {
   digitalWrite(GREEN_LED, HIGH);
 
   Serial.begin(115200);
+
+  send_firmware_version();
 
   g_servo1.attach();
   g_servo2.attach();
