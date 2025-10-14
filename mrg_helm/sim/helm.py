@@ -104,11 +104,24 @@ class SimHelm(TemplateHelm):
             self.efforts = msg.efforts
             self._last_serial = time.time()
             self.link_status[ControlLink.SERIAL] = ControlLinkStatus.ACTIVE
+            self._transmit_status()
         except:
             pass
 
     def setup(self):
+        self._boot()
         self._calibrate_controller()
+
+    def loop(self):
+        loop_time = time.time()
+
+        self._check_status(loop_time)
+
+        time.sleep(self.frequency) # rough frequency
+
+    def _boot(self):
+        print('[SIM EXTERNAL] Boot delay')
+        time.sleep(2)
 
     def _calibrate_controller(self):
         print('[SIM EXTERNAL] Calibrating RC controller', end='', flush=True)
@@ -121,6 +134,18 @@ class SimHelm(TemplateHelm):
         time.sleep(1)
         print('[SIM INTERNAL] Calibration done')
         self._send(bytes('======= CALIBRATION COMPLETE - RC READY =======\n', encoding='utf-8'))
+
+    def _check_status(self, loop_time):
+        if loop_time - self._last_serial > 2:
+            # If 2s have passed since motor command, change state to disconnected.
+            self.link_status[ControlLink.SERIAL] = ControlLinkStatus.DISCONNECTED
+            print('[SIM INTERNAL] Control Link Serial disconnected')
+
+    def _choose_behavior(self):
+        if self.link_status[ControlLink.SERIAL] == ControlLinkStatus.DISCONNECTED:
+            self._transmit_config()
+        elif self.link_status[ControlLink.SERIAL] == ControlLinkStatus.ACTIVE:
+            pass
         
     def _transmit_config(self):
         """Transmit config"""
@@ -135,13 +160,3 @@ class SimHelm(TemplateHelm):
         msg.control_state = 1
         data = msg.SerializeToString()
         self._send(data)
-
-    def loop(self):
-        loop_time = time.time()
-
-        if loop_time - self._last_serial > 5:
-            if self.link_status[ControlLink.SERIAL] == ControlLinkStatus.DISCONNECTED:
-                self._transmit_config()
-        else:
-            self._transmit_status()
-        time.sleep(self.frequency)
