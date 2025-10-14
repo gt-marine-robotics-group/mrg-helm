@@ -19,6 +19,11 @@ extern ServoInputPin<SERVO_5> g_servo5;
 extern int g_rc_peff; // RC Port Effort
 extern int g_rc_seff; // RC Starboard Effort
 
+extern int g_ros_peff;
+extern int g_ros_seff;
+
+extern int32_t g_efforts[2];
+
 extern int g_rc_srg;  // Commanded Surge
 extern int g_rc_swy;  // Commanded Sway
 extern int g_rc_yaw;  // Commanded Yaw
