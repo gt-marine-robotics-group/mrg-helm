@@ -24,6 +24,8 @@ extern int g_ros_seff;
 
 extern int32_t g_efforts[2];
 
+extern bool hardware_estop;
+
 extern int g_rc_srg;  // Commanded Surge
 extern int g_rc_swy;  // Commanded Sway
 extern int g_rc_yaw;  // Commanded Yaw

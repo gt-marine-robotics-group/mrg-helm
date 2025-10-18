@@ -25,4 +25,5 @@ int g_ros_peff = 0;
 int g_ros_seff = 0;
 int32_t g_efforts[2] = {0,0};
 
+bool hardware_estop = false;
 bool g_armed = false;

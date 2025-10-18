@@ -57,7 +57,7 @@ static void send_firmware_version() {
 static inline uint32_t compute_status() {
   uint32_t state = 0;
 
-  if(g_rc_kil) {
+  if(g_rc_kil || hardware_estop) {
     state = 0;
   } else {
     int ctr_state = rcInput.get_ctr_state();
@@ -65,8 +65,9 @@ static inline uint32_t compute_status() {
       state = 2;
     } else if(ctr_state == RCInput::ControlState::remote_control) {
       state = 1;
-    }
-    else {
+    } else if (ctr_state = RCInput::ControlState::calibration) {
+      state = 3;
+    } else {
       state = 0;
     }
   }
@@ -154,6 +155,16 @@ static bool serial_read(uint32_t timeout_ms = 100) {
   return true;
 }
 
+static void read_hardware_estop() {
+  int pin_value = digitalRead(SERVO_6);
+
+  if (pin_value == HIGH) {
+    hardware_estop = true;
+  } else {
+    hardware_estop = false;
+  }
+}
+
 void set_motor_2x() {
   int port = (g_rc_srg + g_rc_yaw);
   int stbd = (g_rc_srg - g_rc_yaw);
@@ -211,12 +222,14 @@ void setup() {
   digitalWrite(YELLOW_LED, HIGH);
   pinMode(GREEN_LED, OUTPUT);
   digitalWrite(GREEN_LED, HIGH);
+  pinMode(SERVO_6,INPUT_PULLUP);
 
   Serial.begin(115200);
 
   send_firmware_version();
 
   // Do we want to set a specific time that a status sent?
+  read_hardware_estop();
   send_status();
 
   g_servo1.attach();
