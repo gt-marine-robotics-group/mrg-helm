@@ -65,7 +65,7 @@ static inline uint32_t compute_status() {
       state = 2;
     } else if(ctr_state == RCInput::ControlState::remote_control) {
       state = 1;
-    } else if (ctr_state = RCInput::ControlState::calibration) {
+    } else if (ctr_state == RCInput::ControlState::calibration) {
       state = 3;
     } else {
       state = 0;
