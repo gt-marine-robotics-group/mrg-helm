@@ -11,7 +11,7 @@ ROS_IMPORT_ERROR = None
 try:
     import rclpy
     from rclpy.node import Node
-    from std_msgs.msg import Float32MultiArray
+    from std_msgs.msg import Int16, Float32MultiArray
     from geometry_msgs.msg import Twist, TwistStamped
 except ImportError as e:
     ROS_IMPORT_SUCCESS = False
@@ -52,6 +52,8 @@ if ROS_IMPORT_SUCCESS:
                 10
             )
 
+            self.status_pub = self.create_publisher(Int16, 'mrg_helm_status', 10)
+
             self.efforts = [0, 0]
 
             self.driver.connect()
@@ -65,6 +67,10 @@ if ROS_IMPORT_SUCCESS:
 
         def _timer_cb(self):
             self.driver.command(self.efforts)
+            control_state = self.driver.control_state
+            status_msg = Int16()
+            status_msg.data = control_state
+            self.status_pub.publish(status_msg)
 
         
 
