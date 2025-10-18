@@ -139,7 +139,7 @@ class SimHelm(TemplateHelm):
         if loop_time - self._last_serial > 2:
             # If 2s have passed since motor command, change state to disconnected.
             self.link_status[ControlLink.SERIAL] = ControlLinkStatus.DISCONNECTED
-            print('[SIM INTERNAL] Control Link Serial disconnected')
+            print(f'[SIM INTERNAL] Control Link Serial disconnected {loop_time - self._last_serial}')
 
     def _choose_behavior(self):
         if self.link_status[ControlLink.SERIAL] == ControlLinkStatus.DISCONNECTED:

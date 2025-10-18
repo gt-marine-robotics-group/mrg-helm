@@ -19,11 +19,13 @@ class HelmDriver:
         self._frequency = 1.0 / hz
         self._efforts = efforts
 
-        self._device = serial.Serial(str(port), 115200, timeout=1)
+        self._device = serial.Serial(str(port), 115200, timeout=0.05)
         self._device_info = {}
 
         self._buffer = None
         self._connected = False
+
+        self.control_state = None
 
         # self.active_link = ControlLink.SERIAL
         # self.control_state = ControlState.MANUAL
@@ -47,17 +49,10 @@ class HelmDriver:
                     msg = Config()
                     msg.ParseFromString(self._buffer)
                     self._device_info['version'] = msg.version
-                    self.command([0 for _ in range(self._efforts)])
-                    self._read()
-                    msg = Status()
-                    msg.ParseFromString(self._buffer)
-                    if msg.control_state == 1:
-                        self._connected = True
-                        print("Connected!")
+                    self._connected = True
+                    print("Connected!")
                 except DecodeError:
                     print(f'Received {self._buffer} but could not parse.')
-
-        
 
     def command(self, commands):
         msg = Command()
@@ -65,3 +60,10 @@ class HelmDriver:
         data = msg.SerializeToString()
         self._send(data)
 
+        try:
+            self._read()
+            msg = Status()
+            msg.ParseFromString(self._buffer)
+            self.control_state = msg.control_state
+        except:
+            print(f'Received {self._buffer} but could not parse.')

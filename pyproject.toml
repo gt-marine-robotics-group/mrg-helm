@@ -12,7 +12,9 @@ dependencies = [
   "grpcio-tools",
   "platformio",
   "typing_extensions",
-  "vserial"
+  "vserial",
+  "pyyaml",
+  "numpy"
 ]
 requires-python = ">=3.8"
 authors = [

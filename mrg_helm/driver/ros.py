@@ -6,58 +6,87 @@ from typing_extensions import Annotated
 
 import typer
 
+ROS_IMPORT_SUCCESS = True
+ROS_IMPORT_ERROR = None
 try:
     import rclpy
     from rclpy.node import Node
+    from std_msgs.msg import Float32MultiArray
     from geometry_msgs.msg import Twist, TwistStamped
-except ImportError:
-    raise
+except ImportError as e:
+    ROS_IMPORT_SUCCESS = False
+    ROS_IMPORT_ERROR = e
+
+from mrg_helm.driver.serial import HelmDriver
 
 
 Topic = Annotated[
     str,
-    typer.Option('--topic', '-t', help='Topic to publish to.')
+    typer.Option('--topic', '-t', help='Topic to subscribe to.')
 ]
 
-class RosHelmDriver(Node):
+TargetPort = Annotated[
+    str,
+    typer.Option('--port', '-p', help='Serial port.')
+]
 
-    def __init__(self, topic='twist'):
-        super().__init__('override_teleop_twist')
-        self.publisher_ = self.create_publisher(Twist, topic, 10)
+if ROS_IMPORT_SUCCESS:
+    class RosHelmDriver(Node):
+        def __init__(self, 
+            topic = 'motor_commands',
+            command_style = 'direct',
+            port = '/tmp/mrg-helm',
+            stamped = True
+        ):
+            super().__init__('mrg_helm')
+            self.driver = HelmDriver(port=port)
 
-    def publish(self, values):
-        msg = Twist()
-        for name, value in values.items():
-            if name == 'surge':
-                msg.linear.x = value.value
-            elif name == 'sway':
-                msg.linear.y = value.value
-            elif name == 'heave':
-                msg.linear.z = value.value
-            elif name == 'roll':
-                msg.angular.x = value.value
-            elif name == 'pitch':
-                msg.angular.y = value.value
-            elif name == 'yaw':
-                msg.angular.z = value.value
-        self.publisher_.publish(msg)
+            if command_style == 'direct':
+                self._msg_type = Float32MultiArray
+                cmd_cb = self._direct_cmd_cb
 
-app = typer.Typer()
+            self.cmd_sub = self.create_subscription(
+                self._msg_type,
+                topic,
+                cmd_cb,
+                10
+            )
 
-@app.command()
-def ros(keybind: Keybind = KeybindConfigs.sixaxis,
-        topic: Topic = 'twist'):
-    """ROS 2 Mode"""
-    rclpy.init()
+            self.efforts = [0, 0]
 
-    twist_pub = TwistPub(topic)
-    callback = twist_pub.publish
+            self.driver.connect()
+            if not self.driver._connected:
+                print('DRIVER NOT CONNECTED')
+                typer.Exit()
+            self.timer = self.create_timer(0.1, self._timer_cb)
 
-    t = threading.Thread(target=osk, args=(keybind, callback), daemon=True)
-    t.start()
+        def _direct_cmd_cb(self, msg):
+            self.efforts = msg.data * 100
 
-    while True:
-        if not t.is_alive():
-            break
-        time.sleep(1)
-    
+        def _timer_cb(self):
+            self.driver.command(self.efforts)
+
+        
+
+    def ros(topic: Topic = 'motor_commands',
+            port: TargetPort = '/tmp/mrg-helm',
+            stamped: bool = True
+    ):
+        """ROS 2 Mode"""
+        rclpy.init()
+
+        ros_helm_driver = RosHelmDriver(topic=topic, port=port, stamped=stamped)
+        
+        rclpy.spin(ros_helm_driver)
+        ros_helm_driver.destroy_node()
+        rclpy.shutdown()
+
+else:
+    def ros(topic: Topic = 'motor_commands',
+            port: TargetPort = '/tmp/mrg-helm',
+            stamped: bool = True
+    ):
+        """ROS 2 Mode"""
+        typer.echo(f'ROS 2 libraries not found, have you sourced the ROS 2 workspace?')
+        typer.echo(f'{ROS_IMPORT_ERROR}')
+        typer.echo(f'Try running `source /opt/ros/[version]/setup.bash`')
