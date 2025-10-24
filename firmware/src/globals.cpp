@@ -27,3 +27,6 @@ int32_t g_efforts[2] = {0,0};
 
 bool hardware_estop = false;
 bool g_armed = false;
+bool g_ready = false;
+
+uint8_t g_buffer[128] = {0};

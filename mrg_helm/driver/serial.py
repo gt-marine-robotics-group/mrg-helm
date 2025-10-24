@@ -56,8 +56,15 @@ class HelmDriver:
 
     def command(self, commands):
         msg = Command()
-        msg.efforts.extend(commands)
+        # msg.efforts.extend(commands)
+        if len(commands) < 2:
+            msg.port = 0
+            msg.stbd = 0
+        else:
+            msg.port = commands[0]
+            msg.stbd = commands[1]
         data = msg.SerializeToString()
+        print('HELLO ' + str(data))
         self._send(data)
 
         try:

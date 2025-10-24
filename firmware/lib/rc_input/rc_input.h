@@ -39,6 +39,7 @@ class RCInput {
         void calibrate();
 
         void read();
+        void read_cal();
 
         int get_srg() const;
         int get_swy() const;

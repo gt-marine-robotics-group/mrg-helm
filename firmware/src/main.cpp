@@ -14,6 +14,8 @@
 
 RCInput rcInput(g_servo5, g_servo2, g_servo3, g_servo4, g_servo1);
 
+static size_t bytesRead = 0;
+
 enum states {
   WAITING_AGENT,
   AGENT_AVAILABLE,
@@ -50,7 +52,7 @@ static void send_firmware_version() {
   if(!ok) {
     Serial.println("Error encoding version message!");
   } else {
-    Serial.println("Sent firmware version protobuf!");
+    // Serial.println("Sent firmware version protobuf!");
   }
 }
 
@@ -83,7 +85,7 @@ static void send_status(){
   if(!pb_encode_delimited(&out,Status_fields,&msg)){
     Serial.println("Error encoding Status!");
   } else {
-    Serial.println("Status Sent!");
+    // Serial.println("Status Sent!");
   }
 }
 
@@ -109,50 +111,16 @@ static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **
 static bool serial_read(uint32_t timeout_ms = 100) {
   uint32_t start = millis();
 
-  // Read the varint, the length of the message
-  uint32_t length = 0;
-  uint32_t shift = 0;
-  while(true) {
-    if((millis() - start) > timeout_ms) {
-      return false;
-    }
-    if(Serial.available()) {
-      uint8_t byte = Serial.read();
-      length |= (uint32_t)(byte & 0x7F) << shift;
-      if(!(byte & 0x80)) {
-        break;
-      }
-      shift += 7;
-    }
-  }
+  Command data = Command_init_zero;
+  pb_istream_t stream = pb_istream_from_buffer(g_buffer, sizeof(g_buffer));
 
-  // Read the actual message
-  uint8_t payload[length];
-  size_t got = 0;
-  start = millis();
-  while(got < length && (millis() - start) < timeout_ms) {
-    if(Serial.available()) {
-      payload[got++] = Serial.read();
-    }
+  if (pb_decode(&stream, Command_fields, &data)) {
+    g_ros_peff = data.port;
+    g_ros_seff = data.stbd;
+  } else {
+    Serial.println('HELLPPPPP');
   }
-  if(got < length) {
-    return false;
-  }
-
-  // Decode the message
-  Command cmd = Command_init_zero;
-  size_t idx = 0;
-  cmd.efforts.funcs.decode = &decode_effort;
-  cmd.efforts.arg = &idx;
-
-  pb_istream_t stream = pb_istream_from_buffer(payload,length);
-  if(!pb_decode(&stream,Command_fields,&cmd)) {
-    Serial.println("Decode Failed");
-    return false;
-  }
-
-  Serial.printf("Received efforts: %ld, %ld\n", (long)g_efforts[0], (long)g_efforts[1]);
-  return true;
+  // Serial.println((String)data.port);
 }
 
 static void read_hardware_estop() {
@@ -186,6 +154,7 @@ void exec_mode(int mode, bool killed) {
       port_throttle = throttle_convert((float)g_ros_peff);
       stbd_throttle = throttle_convert((float)g_ros_seff);
       Serial.println("AUTONOMOUS");
+      // Serial.println(port_throttle);
       digitalWrite(RED_LED, HIGH);
       digitalWrite(YELLOW_LED, LOW);
       digitalWrite(GREEN_LED, HIGH);
@@ -208,7 +177,7 @@ void exec_mode(int mode, bool killed) {
       stbd_throttle = throttle_convert((float)g_rc_seff);
       digitalWrite(RED_LED, LOW);
       digitalWrite(YELLOW_LED, HIGH);
-      digitalWrite(GREEN_LED, LOW);
+      digitalWrite(GREEN_LED, HIGH); // temporary
     }
   }
 }
@@ -226,11 +195,11 @@ void setup() {
 
   Serial.begin(115200);
 
-  send_firmware_version();
+  // 
 
   // Do we want to set a specific time that a status sent?
-  read_hardware_estop();
-  send_status();
+  // read_hardware_estop();
+  // send_status();
 
   g_servo1.attach();
   g_servo2.attach();
@@ -266,18 +235,27 @@ void setup() {
 
 void loop() {
   loop_time = millis();
+  read_hardware_estop();
+
+  static size_t bytesRead = 0;
 
   if(Serial.available()) {
-    serial_read();
+    g_ready = serial_read();
     Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
+    if(g_ready) {
+      send_status();
+    } else {
+      send_firmware_version();
+    }
   }
- 
+
   rcInput.read();
   g_rc_srg = rcInput.get_srg();
   g_rc_swy = rcInput.get_swy();
   g_rc_yaw = rcInput.get_yaw();
-
   exec_mode(rcInput.get_ctr_state(), false);
-  
   set_motor_throttles();
+
+
+  
 }

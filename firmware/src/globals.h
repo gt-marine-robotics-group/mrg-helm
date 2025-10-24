@@ -33,3 +33,6 @@ extern int g_rc_ctr;  // Commanded Control State
 extern int g_rc_kil;  // Commanded Kill State
 
 extern bool g_armed; 
+extern bool g_ready;
+
+extern uint8_t g_buffer[128];
