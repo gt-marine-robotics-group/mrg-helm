@@ -67,7 +67,7 @@ static inline uint32_t compute_status() {
       state = 2;
     } else if(ctr_state == RCInput::ControlState::remote_control) {
       state = 1;
-    } else if (ctr_state = RCInput::ControlState::calibration) {
+    } else if (ctr_state == RCInput::ControlState::calibration) {
       state = 3;
     } else {
       state = 0;
@@ -90,23 +90,23 @@ static void send_status(){
 }
 
 // Decode effort
-static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **arg) {
-  size_t *idx = (size_t*)(*arg);
+// static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **arg) {
+//   size_t *idx = (size_t*)(*arg);
   
-  uint64_t u = 0;
-  if(!pb_decode_varint(stream,&u)) {
-    return false;
-  }
+//   uint64_t u = 0;
+//   if(!pb_decode_varint(stream,&u)) {
+//     return false;
+//   }
 
-  int32_t value = (int32_t)u;
-  if(*idx < 2) {
-    g_efforts[*idx] = value;
-    (*idx)++;
-  }
-  g_ros_peff = g_efforts[0];
-  g_ros_seff = g_efforts[1];
-  return true;
-}
+//   int32_t value = (int32_t)u;
+//   if(*idx < 2) {
+//     g_efforts[*idx] = value;
+//     (*idx)++;
+//   }
+//   g_ros_peff = g_efforts[0];
+//   g_ros_seff = g_efforts[1];
+//   return true;
+// }
 
 static bool serial_read(uint32_t timeout_ms = 100) {
   uint32_t start = millis();
@@ -117,8 +117,10 @@ static bool serial_read(uint32_t timeout_ms = 100) {
   if (pb_decode(&stream, Command_fields, &data)) {
     g_ros_peff = data.port;
     g_ros_seff = data.stbd;
+    return true;
   } else {
-    Serial.println('HELLPPPPP');
+    Serial.println("Error!");
+    return false;
   }
   // Serial.println((String)data.port);
 }
