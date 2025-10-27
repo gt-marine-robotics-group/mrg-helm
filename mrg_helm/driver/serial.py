@@ -2,6 +2,9 @@ from pathlib import Path
 import time
 import serial
 
+
+from cobs import cobs
+
 from google.protobuf.message import DecodeError
 
 
@@ -25,7 +28,7 @@ class HelmDriver:
         self._buffer = None
         self._connected = False
 
-        self.control_state = None
+        self.control_state = -999
 
         # self.active_link = ControlLink.SERIAL
         # self.control_state = ControlState.MANUAL
@@ -34,11 +37,11 @@ class HelmDriver:
     def _read(self):
         """Read data"""
         self._buffer = self._device.readline().strip()
-        print(self._buffer)
 
     def _send(self, data):
         """Write data"""
-        self._device.write(data)
+        encoded = cobs.encode(data)
+        self._device.write(encoded + b'\x00')
 
     def connect(self):
         """Connect to helm interface"""
@@ -64,13 +67,17 @@ class HelmDriver:
             msg.port = commands[0]
             msg.stbd = commands[1]
         data = msg.SerializeToString()
-        print('HELLO ' + str(data))
+        # print('HELLO ' + str(data))
+        # print('[MRG-HELM] SENDING', commands[0], commands[1])
+        print('[MRG-HELM]', data)
         self._send(data)
 
         try:
             self._read()
             msg = Status()
+            msg.control_state = 9
             msg.ParseFromString(self._buffer)
             self.control_state = msg.control_state
+            print(f'Control state {self.control_state}')
         except:
             print(f'Received {self._buffer} but could not parse.')

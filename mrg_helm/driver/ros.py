@@ -62,7 +62,10 @@ if ROS_IMPORT_SUCCESS:
             self.driver.command(self.efforts)
             control_state = self.driver.control_state
             status_msg = Int16()
-            status_msg.data = int(control_state)
+            try:
+                status_msg.data = int(control_state)
+            except:
+                status_msg.data = 999
             self.status_pub.publish(status_msg)
 
         

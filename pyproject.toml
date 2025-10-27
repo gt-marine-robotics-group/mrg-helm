@@ -14,7 +14,8 @@ dependencies = [
   "typing_extensions",
   "vserial",
   "pyyaml",
-  "numpy"
+  "numpy",
+  "cobs"
 ]
 requires-python = ">=3.8"
 authors = [
