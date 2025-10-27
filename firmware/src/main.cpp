@@ -35,27 +35,29 @@ static bool encode_string(pb_ostream_t *stream, const pb_field_t *field, void * 
   return pb_encode_string(stream, (const pb_byte_t*)s,strlen(s)); 
 }
 
-// Output System -> Teensy Serial
-static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
-  size_t w = 0;
-  while(w < cnt) {
-    w += Serial.write(buf + w, cnt - w);
-  }
-  return true;
-}
+// // Output System -> Teensy Serial
+// static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
+//   size_t w = 0;
+//   while(w < cnt) {
+//     w += Serial.write(buf + w, cnt - w);
+//   }
+//   return true;
+// }
 
 static void send_firmware_version() {
+  uint8_t payload[64];
   Config msg = Config_init_default;
   msg.version.funcs.encode = &encode_string;
   msg.version.arg = (void*)"1.0.0"; // firmware version (for now) <= FIX THIS
 
-  pb_ostream_t out = {serial_write, nullptr, SIZE_MAX, 0, nullptr};
-  bool ok = pb_encode_delimited(&out, Config_fields, &msg);
+  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
+  bool ok = pb_encode(&out, Config_fields, &msg);
 
   if(!ok) {
     // Serial.println("Error encoding version message!");
   } else {
-    // Serial.println("Sent firmware version protobuf!");
+    Serial.println("Sent firmware version protobuf!");
+    pktserial.send(payload,out.bytes_written);
   }
 }
 
@@ -80,16 +82,18 @@ static inline uint32_t compute_status() {
 }
 
 static void send_status(){
+  uint8_t payload[32];
   Status msg = Status_init_default;
   // msg.control_state = compute_status();
-  msg.control_state = 9;
+  msg.control_state = compute_status();
 
-  pb_ostream_t out = {serial_write,nullptr,SIZE_MAX,0,nullptr};
+  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
 
   if(!pb_encode_delimited(&out,Status_fields,&msg)){
     // Serial.println("Error encoding Status!");
   } else {
     // Serial.println("Status Sent!");
+    pktserial.send(payload,out.bytes_written);
   }
 }
 
@@ -196,7 +200,7 @@ void onPacket(const uint8_t* buffer, size_t size) {
   bool status = pb_decode(&stream, Command_fields, &cmd);
 
   // Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
-  if (!status) {
+  if (status) {
     g_ros_peff = cmd.port;
     g_ros_seff = cmd.stbd;
   } else {
