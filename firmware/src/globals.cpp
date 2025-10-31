@@ -30,3 +30,5 @@ bool g_armed = false;
 bool g_ready = false;
 
 uint8_t g_buffer[128] = {0};
+
+int g_state = 0;

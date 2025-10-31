@@ -1,5 +1,7 @@
 syntax = "proto3";
 
 message Status {
-    uint32 control_state = 1;
+    int32 control_state = 1;
+    int32 port = 2;
+    int32 stbd = 3;
 }

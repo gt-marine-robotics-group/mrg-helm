@@ -36,3 +36,5 @@ extern bool g_armed;
 extern bool g_ready;
 
 extern uint8_t g_buffer[128];
+
+extern int g_state;

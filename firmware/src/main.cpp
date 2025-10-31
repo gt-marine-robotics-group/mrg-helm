@@ -56,7 +56,7 @@ static void send_firmware_version() {
   if(!ok) {
     // Serial.println("Error encoding version message!");
   } else {
-    Serial.println("Sent firmware version protobuf!");
+    // Serial.println("Sent firmware version protobuf!");
     pktserial.send(payload,out.bytes_written);
   }
 }
@@ -64,6 +64,9 @@ static void send_firmware_version() {
 static inline uint32_t compute_status() {
   uint32_t state = 0;
 
+  if (g_state < 0) {
+    return;
+  }
   if(g_rc_kil || hardware_estop) {
     state = 0;
   } else {
@@ -78,14 +81,16 @@ static inline uint32_t compute_status() {
       state = 0;
     }
   }
-  return state;
+  // return state;
+  g_state = state;
 }
 
 static void send_status(){
   uint8_t payload[32];
   Status msg = Status_init_default;
-  // msg.control_state = compute_status();
-  msg.control_state = compute_status();
+  msg.control_state = g_state;
+  msg.port = g_ros_peff;
+  msg.stbd = g_ros_seff;
 
   pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
 
@@ -171,7 +176,7 @@ void exec_mode(int mode, bool killed) {
     } else if (mode == RCInput::ControlState::calibration) {  // CALIBRATION
       if (g_armed) {
         set_arm(false);
-        Serial.println("CALIBRATION - DISARMING");
+        // Serial.println("CALIBRATION - DISARMING");
       }
       rcInput.check_calibration_ready();
       digitalWrite(RED_LED, HIGH);
@@ -180,7 +185,7 @@ void exec_mode(int mode, bool killed) {
     } else if (mode == RCInput::ControlState::remote_control) {  // REMOTE CONTROL
       if (!g_armed) {
         set_arm(true);
-        Serial.println("MANUAL - ARMING");
+        // Serial.println("MANUAL - ARMING");
       }
       set_motor_2x();
       port_throttle = throttle_convert((float)g_rc_peff);
@@ -198,20 +203,21 @@ void onPacket(const uint8_t* buffer, size_t size) {
   Command cmd = Command_init_zero;
   pb_istream_t stream = pb_istream_from_buffer(buffer, size);
   bool status = pb_decode(&stream, Command_fields, &cmd);
-
+  // Serial.println("HELP");
   // Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
   if (status) {
     g_ros_peff = cmd.port;
     g_ros_seff = cmd.stbd;
   } else {
     // Serial.println("Error!");
+    g_state = -1;
   }
-  Serial.println("=======================");
+  // Serial.println("=======================");
   if(g_ready) {
-    // send_status();
-    Serial.println("========= STATUS ===");
+    send_status();
+    // Serial.println("========= STATUS ===");
   } else {
-    // send_firmware_version();
+    send_firmware_version();
   }
 }
 
@@ -274,6 +280,8 @@ void loop() {
   pktserial.update();
 
   static size_t bytesRead = 0;
+
+  g_ready = true;
 
   // if(Serial.available()) {
   //   // g_buffer = Serial.read();
