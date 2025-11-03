@@ -80,16 +80,18 @@ class HelmDriver:
             self._read()
             data, decoded = self._decode()
             msg = Status()
-            # msg.control_state = 0
+            msg.control_state = -1
             # msg.port = commands[0]
             # msg.stbd = commands[1]
-            sample = msg.SerializeToString()
-            print(f'[DRIVER] Sample: {sample}')
-            print(f'[DRIVER] Incoming: {data}')
+            # sample = msg.SerializeToString()
+            # print(f'[DRIVER] Sample: {sample}')
+            # print(f'[DRIVER] Incoming: {data}')
             msg.ParseFromString(data)
             self.control_state = msg.control_state
             print(f'[DRIVER] Control state {self.control_state}')
             print(f'[DRIVER] Port: {msg.port} | Stbd: {msg.stbd}')
+            self._buffer = None
+            self._device.reset_input_buffer()
         except ProtobufDecodeError:
             print(f'[DRIVER] Command Received {data} {decoded} but could not parse.')
 
