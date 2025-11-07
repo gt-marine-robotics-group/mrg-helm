@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <PacketSerial.h>
 
 #include <rc_input.h>
 #include <pins.h>
@@ -12,7 +13,11 @@
 #include "command.pb.h"
 #include "status.pb.h"
 
+PacketSerial pktserial;
+
 RCInput rcInput(g_servo5, g_servo2, g_servo3, g_servo4, g_servo1);
+
+static size_t bytesRead = 0;
 
 enum states {
   WAITING_AGENT,
@@ -30,33 +35,38 @@ static bool encode_string(pb_ostream_t *stream, const pb_field_t *field, void * 
   return pb_encode_string(stream, (const pb_byte_t*)s,strlen(s)); 
 }
 
-// Output System -> Teensy Serial
-static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
-  size_t w = 0;
-  while(w < cnt) {
-    w += Serial.write(buf + w, cnt - w);
-  }
-  return true;
-}
+// // Output System -> Teensy Serial
+// static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
+//   size_t w = 0;
+//   while(w < cnt) {
+//     w += Serial.write(buf + w, cnt - w);
+//   }
+//   return true;
+// }
 
 static void send_firmware_version() {
+  uint8_t payload[64];
   Config msg = Config_init_default;
   msg.version.funcs.encode = &encode_string;
-  msg.version.arg = (void*)"1.0.0"; // firmware version (for now)
+  msg.version.arg = (void*)"1.0.0"; // firmware version (for now) <= FIX THIS
 
-  pb_ostream_t out = {serial_write, nullptr, SIZE_MAX, 0, nullptr};
-  bool ok = pb_encode_delimited(&out, Config_fields, &msg);
+  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
+  bool ok = pb_encode(&out, Config_fields, &msg);
 
   if(!ok) {
-    Serial.println("Error encoding version message!");
+    // Serial.println("Error encoding version message!");
   } else {
-    Serial.println("Sent firmware version protobuf!");
+    // Serial.println("Sent firmware version protobuf!");
+    pktserial.send(payload,out.bytes_written);
   }
 }
 
 static inline uint32_t compute_status() {
   uint32_t state = 0;
 
+  if (g_state < 0) {
+    return;
+  }
   if(g_rc_kil || hardware_estop) {
     state = 0;
   } else {
@@ -71,88 +81,61 @@ static inline uint32_t compute_status() {
       state = 0;
     }
   }
-  return state;
+  // return state;
+  g_state = state;
 }
 
 static void send_status(){
+  uint8_t payload[32];
   Status msg = Status_init_default;
-  msg.control_state = compute_status();
+  msg.control_state = g_state;
+  msg.port = g_ros_peff;
+  msg.stbd = g_ros_seff;
 
-  pb_ostream_t out = {serial_write,nullptr,SIZE_MAX,0,nullptr};
+  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
 
   if(!pb_encode_delimited(&out,Status_fields,&msg)){
-    Serial.println("Error encoding Status!");
+    // Serial.println("Error encoding Status!");
   } else {
-    Serial.println("Status Sent!");
+    // Serial.println("Status Sent!");
+    pktserial.send(payload,out.bytes_written);
   }
 }
 
 // Decode effort
-static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **arg) {
-  size_t *idx = (size_t*)(*arg);
+// static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **arg) {
+//   size_t *idx = (size_t*)(*arg);
   
-  uint64_t u = 0;
-  if(!pb_decode_varint(stream,&u)) {
-    return false;
-  }
+//   uint64_t u = 0;
+//   if(!pb_decode_varint(stream,&u)) {
+//     return false;
+//   }
 
-  int32_t value = (int32_t)u;
-  if(*idx < 2) {
-    g_efforts[*idx] = value;
-    (*idx)++;
-  }
-  g_ros_peff = g_efforts[0];
-  g_ros_seff = g_efforts[1];
-  return true;
-}
+//   int32_t value = (int32_t)u;
+//   if(*idx < 2) {
+//     g_efforts[*idx] = value;
+//     (*idx)++;
+//   }
+//   g_ros_peff = g_efforts[0];
+//   g_ros_seff = g_efforts[1];
+//   return true;
+// }
 
 static bool serial_read(uint32_t timeout_ms = 100) {
   uint32_t start = millis();
 
-  // Read the varint, the length of the message
-  uint32_t length = 0;
-  uint32_t shift = 0;
-  while(true) {
-    if((millis() - start) > timeout_ms) {
-      return false;
-    }
-    if(Serial.available()) {
-      uint8_t byte = Serial.read();
-      length |= (uint32_t)(byte & 0x7F) << shift;
-      if(!(byte & 0x80)) {
-        break;
-      }
-      shift += 7;
-    }
-  }
+  Command data = Command_init_zero;
+  pb_istream_t stream = pb_istream_from_buffer(g_buffer, sizeof(g_buffer));
 
-  // Read the actual message
-  uint8_t payload[length];
-  size_t got = 0;
-  start = millis();
-  while(got < length && (millis() - start) < timeout_ms) {
-    if(Serial.available()) {
-      payload[got++] = Serial.read();
-    }
-  }
-  if(got < length) {
+  if (pb_decode(&stream, Command_fields, &data)) {
+    g_ros_peff = data.port;
+    g_ros_seff = data.stbd;
+    return true;
+  } else {
+    // Serial.println("Error!");
     return false;
   }
-
-  // Decode the message
-  Command cmd = Command_init_zero;
-  size_t idx = 0;
-  cmd.efforts.funcs.decode = &decode_effort;
-  cmd.efforts.arg = &idx;
-
-  pb_istream_t stream = pb_istream_from_buffer(payload,length);
-  if(!pb_decode(&stream,Command_fields,&cmd)) {
-    Serial.println("Decode Failed");
-    return false;
-  }
-
-  Serial.printf("Received efforts: %ld, %ld\n", (long)g_efforts[0], (long)g_efforts[1]);
-  return true;
+  // Serial.println((String)data.port);
 }
 
 static void read_hardware_estop() {
@@ -181,18 +164,19 @@ void exec_mode(int mode, bool killed) {
     if (mode == RCInput::ControlState::autonomous) {  // AUTONOMOUS
       if (!g_armed) {
         set_arm(true);
-        Serial.println("AUTONOMOUS - ARMING");
+        // Serial.println("AUTONOMOUS - ARMING");
       }
       port_throttle = throttle_convert((float)g_ros_peff);
       stbd_throttle = throttle_convert((float)g_ros_seff);
-      Serial.println("AUTONOMOUS");
+      // Serial.println("AUTONOMOUS");
+      // Serial.println(port_throttle);
       digitalWrite(RED_LED, HIGH);
       digitalWrite(YELLOW_LED, LOW);
       digitalWrite(GREEN_LED, HIGH);
     } else if (mode == RCInput::ControlState::calibration) {  // CALIBRATION
       if (g_armed) {
         set_arm(false);
-        Serial.println("CALIBRATION - DISARMING");
+        // Serial.println("CALIBRATION - DISARMING");
       }
       rcInput.check_calibration_ready();
       digitalWrite(RED_LED, HIGH);
@@ -201,15 +185,39 @@ void exec_mode(int mode, bool killed) {
     } else if (mode == RCInput::ControlState::remote_control) {  // REMOTE CONTROL
       if (!g_armed) {
         set_arm(true);
-        Serial.println("MANUAL - ARMING");
+        // Serial.println("MANUAL - ARMING");
       }
       set_motor_2x();
       port_throttle = throttle_convert((float)g_rc_peff);
       stbd_throttle = throttle_convert((float)g_rc_seff);
       digitalWrite(RED_LED, LOW);
       digitalWrite(YELLOW_LED, HIGH);
-      digitalWrite(GREEN_LED, LOW);
+      digitalWrite(GREEN_LED, HIGH); // temporary
     }
+  }
+}
+
+uint8_t buffer[128];
+
+void onPacket(const uint8_t* buffer, size_t size) {
+  Command cmd = Command_init_zero;
+  pb_istream_t stream = pb_istream_from_buffer(buffer, size);
+  bool status = pb_decode(&stream, Command_fields, &cmd);
+  // Serial.println("HELP");
+  // Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
+  if (status) {
+    g_ros_peff = cmd.port;
+    g_ros_seff = cmd.stbd;
+  } else {
+    // Serial.println("Error!");
+    g_state = -1;
+  }
+  // Serial.println("=======================");
+  if(g_ready) {
+    send_status();
+    // Serial.println("========= STATUS ===");
+  } else {
+    send_firmware_version();
   }
 }
 
@@ -224,13 +232,15 @@ void setup() {
   digitalWrite(GREEN_LED, HIGH);
   pinMode(SERVO_6,INPUT_PULLUP);
 
-  Serial.begin(115200);
+  // Serial.begin(115200);
+  pktserial.begin(115200);
+  pktserial.setPacketHandler(&onPacket);
 
-  send_firmware_version();
+  // 
 
   // Do we want to set a specific time that a status sent?
-  read_hardware_estop();
-  send_status();
+  // read_hardware_estop();
+  // send_status();
 
   g_servo1.attach();
   g_servo2.attach();
@@ -245,7 +255,7 @@ void setup() {
   // Turn off red to indicate microros transports
   digitalWrite(GREEN_LED, LOW);  
 
-  rcInput.calibrate();
+  // rcInput.calibrate();
 
   SPI.begin();
   pot.begin();
@@ -266,18 +276,31 @@ void setup() {
 
 void loop() {
   loop_time = millis();
+  read_hardware_estop();
+  pktserial.update();
 
-  if(Serial.available()) {
-    serial_read();
-    Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
-  }
- 
+  static size_t bytesRead = 0;
+
+  g_ready = true;
+
+  // if(Serial.available()) {
+  //   // g_buffer = Serial.read();
+  //   update_buffer();
+  //   g_ready = serial_read();
+  //   Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
+  //   if(g_ready) {
+  //     send_status();
+  //   } else {
+  //     send_firmware_version();
+  //   }
+  // }
+
   rcInput.read();
   g_rc_srg = rcInput.get_srg();
   g_rc_swy = rcInput.get_swy();
   g_rc_yaw = rcInput.get_yaw();
-
   exec_mode(rcInput.get_ctr_state(), false);
-  
+  // exec_mode(RCInput::ControlState::autonomous, false);
   set_motor_throttles();
+  delay(50);  
 }

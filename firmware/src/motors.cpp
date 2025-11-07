@@ -10,8 +10,8 @@ int16_t throttle_convert(float input){
   input += 100.0f; // -100 -> 0
   int16_t throttle = static_cast<int16_t>(input *= 1.28f); // scale to 0-to-256
   throttle = max(min(255, throttle), 0); // ensure within 0 to 255 range
-  Serial.println("THROTTLE");
-  Serial.println(throttle);
+  // Serial.println("THROTTLE");
+  // Serial.println(throttle);
   return throttle;
 }
 

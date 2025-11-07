@@ -61,27 +61,39 @@ void RCInput::calibrate() {
 
     while(m_ctr_state != ControlState::calibration || !calibration_ready || !(calibration_zero_check < 15)) {
         loop_time = millis();
-        read();
+        read_cal();
         calibration_ready = check_calibration_ready();
-        if (abs(m_srg) + abs(m_swy) + abs(m_yaw) <= 10) {
+        if ((abs(m_srg) <= 15) && (abs(m_swy) <= 15) && (abs(m_yaw) <= 15)) {
             calibration_zero_check += 1;
-        }
-        else {
+        } else {
             calibration_zero_check = 0;
+            Serial.println(abs(m_srg) + abs(m_swy) + abs(m_yaw));
         }
     }
 }
 
-void RCInput::read() {
-    m_srg = m_elev.mapDeadzone(-100, 101, 0.1);
-    m_swy = m_aile.mapDeadzone(-100, 101, 0.1);
-    m_yaw = m_rudd.mapDeadzone(-100, 101, 0.1);
+void RCInput::read_cal() {
+    m_srg = m_elev.mapDeadzone(-100, 101, 0.05);
+    m_swy = m_aile.mapDeadzone(-100, 101, 0.05);
+    m_yaw = m_rudd.mapDeadzone(-100, 101, 0.05);
     m_ctr_state = static_cast<ControlState>(m_aux1.map(0, 2));
     // m_kill_state = static_cast<KillState>(m_gear.map(1, 0)); # WRONG ?
     char buffer[100];
     sprintf(buffer, "RC | SRG: %4i  SWY: %4i  YAW: %4i CTR: %1i KIL: %1i", 
         m_srg, m_swy, m_yaw, m_ctr_state, m_kill_state);
-    //Serial.println(buffer);
+    // Serial.println(buffer);
+}
+
+void RCInput::read() {
+    m_srg = m_elev.mapDeadzone(-100, 101, 0.15);
+    m_swy = m_aile.mapDeadzone(-100, 101, 0.15);
+    m_yaw = m_rudd.mapDeadzone(-100, 101, 0.15);
+    m_ctr_state = static_cast<ControlState>(m_aux1.map(0, 2));
+    // m_kill_state = static_cast<KillState>(m_gear.map(1, 0)); # WRONG ?
+    char buffer[100];
+    sprintf(buffer, "RC | SRG: %4i  SWY: %4i  YAW: %4i CTR: %1i KIL: %1i", 
+        m_srg, m_swy, m_yaw, m_ctr_state, m_kill_state);
+    // Serial.println(buffer);
 }
 
 int RCInput::get_srg() const {

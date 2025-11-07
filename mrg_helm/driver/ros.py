@@ -2,7 +2,7 @@
 
 import threading
 import time
-from typing_extensions import Annotated
+
 
 import typer
 
@@ -18,17 +18,9 @@ except ImportError as e:
     ROS_IMPORT_ERROR = e
 
 from mrg_helm.driver.serial import HelmDriver
+from mrg_helm.driver import Topic, TargetPort
 
 
-Topic = Annotated[
-    str,
-    typer.Option('--topic', '-t', help='Topic to subscribe to.')
-]
-
-TargetPort = Annotated[
-    str,
-    typer.Option('--port', '-p', help='Serial port.')
-]
 
 if ROS_IMPORT_SUCCESS:
     class RosHelmDriver(Node):
@@ -63,13 +55,17 @@ if ROS_IMPORT_SUCCESS:
             self.timer = self.create_timer(0.1, self._timer_cb)
 
         def _direct_cmd_cb(self, msg):
-            self.efforts = msg.data * 100
+            efforts = msg.data
+            self.efforts = [int(x * 100) for x in efforts]
 
         def _timer_cb(self):
             self.driver.command(self.efforts)
             control_state = self.driver.control_state
             status_msg = Int16()
-            status_msg.data = control_state
+            try:
+                status_msg.data = int(control_state)
+            except:
+                status_msg.data = 999
             self.status_pub.publish(status_msg)
 
         
