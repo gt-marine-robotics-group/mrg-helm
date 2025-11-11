@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+// ---------- Common ----------
+enum BoardId {
+    BOARD_UNKNOWN_ID = 0;
+    BOARD_JETSON_ID  = 1;
+    BOARD_PRESTO_ID  = 2;
+    BOARD_SENSOR_ID  = 3;
+}
+
+message Header {
+    BoardId src = 1; // who sent this
+}
+
+// ------ Presto ------
+message MotorCommand {  //  (Jetson to Presto)
+    Header header = 1;
+
+    float motor_1 = 2;
+    float motor_2 = 3;
+    float motor_3 = 4;
+    float motor_4 = 5;
+    float motor_5 = 6;
+    float motor_6 = 7;
+    float motor_7 = 8;
+    float motor_8 = 9;
+}
+
+message IndicatorLightCommand { // (Jetson to Presto)
+    Header header = 1;
+
+    float r = 2;  // Percent 0.0 to 1.0
+    float g = 3;
+    float b = 4;
+}
+
+message PrestoState {
+    Header header = 1;
+
+    bool e_stop = 2;
+    bool autonomy_switch = 3;
+}
+
+// ------ Sensor Board ------
+message SensorBState {
+    Header header = 1;
+
+    float voltage_v = 2;
+    float current_a = 3;
+    float pressure_pa = 4;
+}
+
+
+// ------ Top-Level Carrier ------
+
+/*
+ Now that there are multiple possible command types coming in or
+ multiple sensor types coming out we need this so we can determine which
+ we are using.
+*/
+message Envelope {
+    Header header = 1;
+    oneof payload {
+        MotorCommand motor_cmd = 10;
+        IndicatorLightCommand indicator_cmd = 11;
+        PrestoState presto_state = 12;
+        SensorBState sensorb_state = 13;
+    }
+}
