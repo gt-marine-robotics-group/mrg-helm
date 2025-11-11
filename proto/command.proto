@@ -1,6 +1,0 @@
-syntax = "proto3";
-
-message Command {
-    int32 port = 1;
-    int32 stbd = 2;
-}

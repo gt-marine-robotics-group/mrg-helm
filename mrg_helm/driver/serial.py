@@ -1,115 +1,131 @@
 from pathlib import Path
-import time
 import serial
-
 
 from cobs import cobs
 from cobs.cobs import DecodeError as CobsDecodeError
 
 from google.protobuf.message import DecodeError as ProtobufDecodeError
 
+from mrg_helm.pb.robosub_pb2 import (
+    MotorCommand,
+    IndicatorLightCommand,
+    PrestoState,
+    SensorBState,
+    Envelope,
+    BOARD_JETSON_ID,
+)
 
-from mrg_helm.pb.command_pb2 import Command
-from mrg_helm.pb.config_pb2 import Config
-from mrg_helm.pb.status_pb2 import Status
 
 class HelmDriver:
     """Driver for Helm Interface"""
     def __init__(self, 
-                 port=Path('/tmp/mrg-helm'),
-                 hz=10,
-                 efforts=2):
+                 port: Path = Path('/tmp/mrg-helm'),
+                 hz: int = 10,
+                 baud: int = 115200,
+                 rx_timeout : float = 0.05,
+    ) -> None:
 
-        self._frequency = 1.0 / hz
-        self._efforts = efforts
+        self._period = 1.0 / hz
 
-        self._device = serial.Serial(str(port), 115200, timeout=0.05)
+        self._device = serial.Serial(str(port), baud, timeout=rx_timeout)
         self._device_info = {}
 
-        self._buffer = None
-        self._connected = False
+        self._buffer: bytes | None = None
+        self._connected: bool = self._device.is_open
 
-        self.control_state = -999
-
-        # self.active_link = ControlLink.SERIAL
-        # self.control_state = ControlState.MANUAL
-        # self.active_state = ActiveState.STOPPED
-
-    def _read(self):
+    def _read(self) -> bytes | None:
         """Read data"""
-        self._buffer = self._device.read_until(b'\x00')
+        frame = self._device.read_until(b'\x00')
 
-    def _send(self, data):
+        if not frame:
+            return None
+        frame = frame[:-1]  # Remove 0x00
+
+        try:
+            data = cobs.decode(frame)
+            return data
+        except CobsDecodeError:
+            return None
+
+    def _send(self, data: bytes) -> None:
         """Write data"""
         encoded = cobs.encode(data)
         self._device.write(encoded + b'\x00')
 
-    def connect(self):
-        """Connect to helm interface"""
-        while not self._connected:
-            self._read()
-            decoded = False
-            if self._buffer is not None:
-                data, decoded = self._decode()
-                try:
-                    msg = Config()
-                    msg.ParseFromString(data)
-                    self._device_info['version'] = msg.version
-                    self._connected = True
-                    print("Connected!")
-                except ProtobufDecodeError:
-                    print(f'Connect Received {data} {decoded} but could not parse.')
+    def _send_envelope(self, envelope: Envelope) -> None:
+        """Serialize and send an Envelope message"""    
+        self._send(envelope.SerializeToString())
 
-    def command(self, commands):
-        msg = Command()
-        # msg.efforts.extend(commands)
-        if len(commands) < 2:
-            msg.port = 0
-            msg.stbd = 0
-        else:
-            msg.port = commands[0]
-            msg.stbd = commands[1]
-        data = msg.SerializeToString()
-        # print('HELLO ' + str(data))
-        # print('[MRG-HELM] SENDING', commands[0], commands[1])
-        print('[DRIVER] Sent', data)
-        self._send(data)
-
-        decoded = False
-        try:
-            self._read()
-            data, decoded = self._decode()
-            msg = Status()
-            msg.control_state = -1
-            # msg.port = commands[0]
-            # msg.stbd = commands[1]
-            # sample = msg.SerializeToString()
-            # print(f'[DRIVER] Sample: {sample}')
-            # print(f'[DRIVER] Incoming: {data}')
-            msg.ParseFromString(data)
-            self.control_state = msg.control_state
-            print(f'[DRIVER] Control state {self.control_state}')
-            print(f'[DRIVER] Port: {msg.port} | Stbd: {msg.stbd}')
-            self._buffer = None
-            self._device.reset_input_buffer()
-        except ProtobufDecodeError:
-            print(f'[DRIVER] Command Received {data} {decoded} but could not parse.')
-
-    def _decode(self):
-        decoded = False
+    def send_motor_command(self, motors8: list[float]) -> None:
+        if len(motors8) != 8:
+            raise ValueError("MotorCommand requires exactly 8 values")
         
-        # frames = [f for f in self._buffer.split(b'\x00') if f] 
-       
-        frame = b''
-        if len(self._buffer) > 0:
-            frame = self._buffer[0:(len(self._buffer)-1)]
-       
-        try:
-            data = cobs.decode(frame)[1:]
-            print(f'[DRIVER] Decoded data: {data}')
-            decoded = True
-        except CobsDecodeError as e:
-            print(e)
-            data = frame
+        env = Envelope()
+        env.header.src = BOARD_JETSON_ID
 
-        return data, decoded
+        msg: MotorCommand = env.motor_cmd
+        (
+            msg.motor_1, 
+            msg.motor_2, 
+            msg.motor_3, 
+            msg.motor_4,
+            msg.motor_5, 
+            msg.motor_6, 
+            msg.motor_7, 
+            msg.motor_8
+        ) = motors8
+
+        self._send_envelope(env)
+        
+    def send_indicator_led_command(self, r: float, g: float, b: float) -> None:
+
+        env = Envelope()
+        env.header.src = BOARD_JETSON_ID
+
+        msg: IndicatorLightCommand = env.indicator_cmd
+        msg.r = r
+        msg.g = g
+        msg.b = b
+
+        self._send_envelope(env)
+
+    def _read_envelope_once(self) -> Envelope | None:
+        """Try to read one Envelope from the wire; return msg or None"""
+
+        data = self._read()
+        if not data:
+            return None
+        
+        env = Envelope()
+        try:
+            env.ParseFromString(data)
+            return env
+        except ProtobufDecodeError:
+            return None
+
+    def read_presto_state_once(self) -> PrestoState | None:
+        """Try to read one PrestoState from the wire; return msg or None."""
+
+        env = self._read_envelope_once()
+        if not env:
+            return None
+
+        if env.WhichOneof("payload") == "presto_state":  # How we can detect what kind of data is coming in
+            return env.presto_state
+        return None
+
+    def read_sensorb_state_once(self) -> SensorBState | None:
+        """Read one SensorBState from the wire, if present."""
+        env = self._read_envelope_once()
+        if not env:
+            return None
+
+        if env.WhichOneof("payload") == "sensorb_state":
+            return env.sensorb_state
+        return None
+
+    def close(self) -> None:
+        try:
+            self._device.close()
+        except Exception:
+            pass

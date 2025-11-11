@@ -1,8 +1,7 @@
 # ROS Mode
-
-import threading
-import time
-
+from pathlib import Path
+from mrg_helm.driver.serial import HelmDriver
+from typing import Optional
 
 import typer
 
@@ -11,84 +10,169 @@ ROS_IMPORT_ERROR = None
 try:
     import rclpy
     from rclpy.node import Node
-    from std_msgs.msg import Int16, Float32MultiArray
-    from geometry_msgs.msg import Twist, TwistStamped
+    from std_msgs.msg import Bool, ColorRGBA, Float32, Float32MultiArray
 except ImportError as e:
     ROS_IMPORT_SUCCESS = False
     ROS_IMPORT_ERROR = e
 
-from mrg_helm.driver.serial import HelmDriver
-from mrg_helm.driver import Topic, TargetPort
-
-
 
 if ROS_IMPORT_SUCCESS:
     class RosHelmDriver(Node):
-        def __init__(self, 
-            topic = 'motor_commands',
-            command_style = 'direct',
-            port = '/tmp/mrg-helm',
-            stamped = True
-        ):
+        def __init__(self,
+                     presto_port: str = "/dev/ttyUSB0",  #/tmp/ttyUSB-presto  # TODO: Setup udev rules on Jetson 
+                     sensorb_port: str = "/dev/ttyUSB1", #/tmp/ttyUSB-sensorb # @SeanFish are you setting up some alias when you set "/tmp/mrg-helm" 
+                     hz: int = 20
+        ) -> None:
+
             super().__init__('mrg_helm')
-            self.driver = HelmDriver(port=port)
 
-            if command_style == 'direct':
-                self._msg_type = Float32MultiArray
-                cmd_cb = self._direct_cmd_cb
+            self.presto_driver: Optional[HelmDriver] = None
+            self.sensorb_driver: Optional[HelmDriver] = None
 
-            self.cmd_sub = self.create_subscription(
-                self._msg_type,
-                topic,
-                cmd_cb,
+            try:
+                self.presto_driver = HelmDriver(Path(presto_port), hz=hz)
+            except Exception as e:
+                self.get_logger().warn(
+                    f"Could not open presto port {presto_port}: {e}")
+
+            try:
+                self.sensorb_driver = HelmDriver(Path(sensorb_port), hz=hz)
+            except Exception as e:
+                self.get_logger().warn(
+                    f"Could not open sensor board port {sensorb_port}: {e}")
+
+            # ------ ROS Subscriptions ------
+            self.cmd_motors_sub = self.create_subscription(
+                Float32MultiArray,
+                "/pontus/thruster_cmds",
+                self._motors_callback,
                 10
             )
 
-            self.status_pub = self.create_publisher(Int16, 'mrg_helm_status', 10)
+            self.cmd_indicator_led_sub = self.create_subscription(
+                ColorRGBA,
+                "/pontus/indicator_led_color",
+                self._indicator_led_callback,
+                10
+            )
 
-            self.efforts = [0, 0]
+            self._last_led_color = None
 
-            self.driver.connect()
-            if not self.driver._connected:
-                print('DRIVER NOT CONNECTED')
-                typer.Exit()
-            self.timer = self.create_timer(0.1, self._timer_cb)
+            # ------ ROS Publishers ------
+            self.estop_pub = self.create_publisher(
+                Bool,
+                "/pontus/e_stop",
+                10
+            )
 
-        def _direct_cmd_cb(self, msg):
-            efforts = msg.data
-            self.efforts = [int(x * 100) for x in efforts]
+            self.autonomy_switch_pub = self.create_publisher(
+                Bool,
+                "/pontus/autonomy_switch",
+                10
+            )
 
-        def _timer_cb(self):
-            self.driver.command(self.efforts)
-            control_state = self.driver.control_state
-            status_msg = Int16()
-            try:
-                status_msg.data = int(control_state)
-            except:
-                status_msg.data = 999
-            self.status_pub.publish(status_msg)
+            self.depth_sensor_pub = self.create_publisher(
+                Float32,
+                "/pontus/depth_sensor",
+                10
+            )
 
-        
+            self.voltage_pub = self.create_publisher(
+                Float32,
+                "/pontus/power/voltage",
+                10
+            )
 
-    def ros(topic: Topic = 'motor_commands',
-            port: TargetPort = '/tmp/mrg-helm',
-            stamped: bool = True
-    ):
+            self.current_pub = self.create_publisher(
+                Float32,
+                "/pontus/power/current",
+                10
+            )
+
+            # ------ Timers ------
+            self.telemetry_timer = self.create_timer(
+                1.0 / hz, 
+                self._telemetry_timer_callback
+            )
+
+
+        # --------- Callbacks ---------
+
+        def _motors_callback(self, msg: Float32MultiArray) -> None:
+            vals = list(msg.data)
+
+            if self.presto_driver and self.presto_driver._connected:
+                try:
+                    self.presto_driver.send_motor_command(vals)
+                except Exception as e:
+                    self.get_logger().warn(f"send_motor_command failed: {e}")
+
+        def _indicator_led_callback(self, msg: ColorRGBA) -> None:
+            if self._last_led_color == msg:
+                # Don't send color if the same as previous message
+                return 
+
+            self._last_led_color = msg
+            
+            if self.presto_driver and self.presto_driver._connected:
+                try:
+                    self.presto_driver.send_indicator_led_command(
+                        msg.r, msg.g, msg.b
+                    )
+                except Exception as e:
+                    self.get_logger().warn(
+                        f"send_indicator_led_command failed: {e}"
+                    )
+
+        def _telemetry_timer_callback(self) -> None:
+            # ------ Presto Board Telemetry ------
+            if self.presto_driver and self.presto_driver._connected:
+                state = self.presto_driver.read_presto_state_once()
+                if state:
+                    e_stop_msg = Bool()
+                    e_stop_msg.data = bool(state.e_stop)
+                    self.estop_pub.publish(e_stop_msg)
+
+                    autonomy_switch_msg = Bool()
+                    autonomy_switch_msg.data = bool(state.autonomy_switch)
+                    self.autonomy_switch_pub.publish(autonomy_switch_msg)
+
+            # ------ Sensor Board Telemetry ------
+            if self.sensorb_driver and self.sensorb_driver._connected:
+                state = self.sensorb_driver.read_sensorb_state_once()
+                if state:
+                    depth_msg = Float32()
+                    depth_msg.data = state.pressure_pa
+                    self.depth_sensor_pub.publish(depth_msg)
+
+                    voltage_msg = Float32()
+                    voltage_msg.data = state.voltage_v
+                    self.voltage_pub.publish(voltage_msg)
+
+                    current_msg = Float32()
+                    current_msg.data = state.current_a
+                    self.current_pub.publish(current_msg)
+
+    def ros(presto_port: str = "/tmp/ttyUSB-presto",
+            sensorb_port: str = "/tmp/ttyUSB-sensorb",
+            hz: int = 20
+            ) -> None:
         """ROS 2 Mode"""
         rclpy.init()
 
-        ros_helm_driver = RosHelmDriver(topic=topic, port=port, stamped=stamped)
-        
-        rclpy.spin(ros_helm_driver)
-        ros_helm_driver.destroy_node()
-        rclpy.shutdown()
+        node = RosHelmDriver(presto_port=presto_port,
+                             sensor_port=sensorb_port, 
+                             hz=hz)
 
+        try:
+            rclpy.spin(node)
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
 else:
-    def ros(topic: Topic = 'motor_commands',
-            port: TargetPort = '/tmp/mrg-helm',
-            stamped: bool = True
-    ):
-        """ROS 2 Mode"""
-        typer.echo(f'ROS 2 libraries not found, have you sourced the ROS 2 workspace?')
-        typer.echo(f'{ROS_IMPORT_ERROR}')
-        typer.echo(f'Try running `source /opt/ros/[version]/setup.bash`')
+    def ros(presto_port: str = "/tmp/ttyUSB-presto",
+            sensor_port: str = "/tmp/ttyUSB-sensor",
+            hz: int = 20) -> None:
+        typer.echo(
+            "ROS 2 libraries not found. Have you sourced your ROS 2 setup?")
+        typer.echo(f"{ROS_IMPORT_ERROR}")

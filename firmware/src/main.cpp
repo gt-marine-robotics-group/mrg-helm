@@ -1,306 +1,272 @@
 #include <Arduino.h>
+#include "board_config.h"
+#include "pinout.h"
+
 #include <PacketSerial.h>
-
-#include <rc_input.h>
-#include <pins.h>
-
-#include "motors.h"
-#include "globals.h"
-
 #include "pb_encode.h"
 #include "pb_decode.h"
-#include "config.pb.h"
-#include "command.pb.h"
-#include "status.pb.h"
+#include "robosub.pb.h"
 
-PacketSerial pktserial;
+static PacketSerial pktserial;
+static constexpr uint32_t BAUDRATE = 115200;
 
-RCInput rcInput(g_servo5, g_servo2, g_servo3, g_servo4, g_servo1);
+static constexpr size_t MAX_PROTO = 256;
+static uint8_t tx_buf[MAX_PROTO];
 
-static size_t bytesRead = 0;
+static constexpr uint32_t TELEMETRY_PERIOD_MS = 50;
+static constexpr uint32_t CMD_TIMEOUT_MS = 250;
 
-enum states {
-  WAITING_AGENT,
-  AGENT_AVAILABLE,
-  AGENT_CONNECTED,
-  AGENT_DISCONNECTED
-} state;
 
-// Protobuf helper, nanopb expects a function for Config
-static bool encode_string(pb_ostream_t *stream, const pb_field_t *field, void * const *arg) {
-  const char *s = (const char*)(*arg);
-  if(!pb_encode_tag_for_field(stream,field)) {
-    return false;
-  }
-  return pb_encode_string(stream, (const pb_byte_t*)s,strlen(s)); 
+// ------- Motor Controls (Presto) ------
+#if defined(HAS_MOTORS) && HAS_MOTORS
+static uint32_t last_cmd_ms = 0;
+static float motor_targets[8] = {0};
+
+// TODO: Implement motor driver functions
+static void motors_init() {
+  // TODO: configure PWM pins for each motor in pins::...
 }
 
-// // Output System -> Teensy Serial
-// static bool serial_write(pb_ostream_t *s, const pb_byte_t *buf, size_t cnt) {
-//   size_t w = 0;
-//   while(w < cnt) {
-//     w += Serial.write(buf + w, cnt - w);
-//   }
-//   return true;
-// }
-
-static void send_firmware_version() {
-  uint8_t payload[64];
-  Config msg = Config_init_default;
-  msg.version.funcs.encode = &encode_string;
-  msg.version.arg = (void*)"1.0.0"; // firmware version (for now) <= FIX THIS
-
-  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
-  bool ok = pb_encode(&out, Config_fields, &msg);
-
-  if(!ok) {
-    // Serial.println("Error encoding version message!");
-  } else {
-    // Serial.println("Sent firmware version protobuf!");
-    pktserial.send(payload,out.bytes_written);
-  }
+static void motors_set_all(const float motor_vals[8]) {
+  // TODO: map [-1.0,1.0] to PWM/ESC outputs
+  (void)motor_vals;
 }
 
-static inline uint32_t compute_status() {
-  uint32_t state = 0;
+static void motors_safe_stop() {
+  float zeros[8] = {0};
+  motors_set_all(zeros);
+}
 
-  if (g_state < 0) {
+#endif // HAS_MOTORS
+
+
+#if defined(HAS_E_STOP) && HAS_E_STOP
+static bool estop_active() {
+  // TODO: read digital input from e-stop pin
+
+  // TODO: Jason "consider using an interrupt to make sure e-stop has priority"
+  return false;
+}
+#endif
+
+
+#if defined(HAS_AUTONOMY_SWITCH) && HAS_AUTONOMY_SWITCH
+static bool autonomy_switch_enabled() {
+  // TODO: read autonomy switch pin
+  return false;
+}
+#endif
+
+#if defined(HAS_INDICATOR_LED) && HAS_INDICATOR_LED
+static void setup_neopixel() {
+  // TODO: Initialize the NeoPixel
+
+}
+
+static void indicator_set_rgb(float r, float g, float b) {
+  // TODO: set Neopixel to the given rgb and brightness
+  (void)r; (void)g; (void)b;
+}
+#endif
+
+#if defined(BOARD_PRESTO) && BOARD_PRESTO
+static void send_presto_state() {
+  Envelope env = Envelope_init_default;
+  env.header.src = kBoardId;
+
+  env.which_payload = Envelope_presto_state_tag;
+  PrestoState &out = env.payload.presto_state;
+  out.header = env.header;  // keep inner header too (handy on Jetson)
+
+  #if defined(HAS_E_STOP) && HAS_E_STOP
+    out.e_stop = estop_active();
+  #else
+    out.e_stop = false;
+  #endif
+
+  #if defined(HAS_AUTONOMY_SWITCH) && HAS_AUTONOMY_SWITCH
+    out.autonomy_switch = autonomy_switch_enabled();
+  #else
+    out.autonomy_switch = false;
+  #endif
+
+  pb_ostream_t s = pb_ostream_from_buffer(tx_buf, sizeof(tx_buf));
+  if (pb_encode(&s, Envelope_fields, &env)) {
+    pktserial.send(tx_buf, s.bytes_written);
+  }
+}
+#endif  // BOARD_PRESTO
+
+
+// ------ Sensor Board ------
+
+#if defined(HAS_POWER_SENSING) && HAS_POWER_SENSING
+static void power_sensing_init() {
+  // TODO: initialize the power sensing sensors
+}
+static float read_voltage_v() {
+  // TODO: ready your voltage values
+  /*
+  May be worth renaming these variable to be more specific. I don't have 
+  full context, but something like compute_battery_voltage_v would be
+  preferred over voltage_v jsut to reduce ambiguity.
+
+  Will also need to update the protobuuf definitions so send Mitchell a message
+  if there is a more descriptive name for this or the current values
+  */
+  return 0.0f;
+}
+static float read_current_a() {
+  // TODO: read current values
+
+  return 0.0f;
+}
+#endif
+
+#if defined(HAS_PRESSURE_SENSING) && HAS_PRESSURE_SENSING
+static float read_pressure_pa() {
+  // TODO: read pressure sensor values
+  /*
+  Leave this to Mitchell and Matthew there is something funky happening that
+  we've been debugging
+  */
+  return 0.0f;
+}
+#endif
+
+
+#if defined(BOARD_SENSOR) && BOARD_SENSOR
+static void send_sensorb_state() {
+  Envelope env = Envelope_init_default;
+  env.header.src = kBoardId;
+
+  env.which_payload = Envelope_sensorb_state_tag;
+  SensorBState &out = env.payload.sensorb_state;
+  out.header = env.header;
+
+  #if defined(HAS_POWER_SENSING) && HAS_POWER_SENSING
+    out.voltage_v = read_voltage_v();
+    out.current_a = read_current_a();
+  #else
+    out.voltage_v = 0;
+    out.current_a = 0;
+  #endif
+
+  #if defined(HAS_PRESSURE_SENSING) && HAS_PRESSURE_SENSING
+    out.pressure_pa = read_pressure_pa();
+  #else
+    out.pressure_pa = 0;
+  #endif
+
+  pb_ostream_t s = pb_ostream_from_buffer(tx_buf, sizeof(tx_buf));
+  if (pb_encode(&s, Envelope_fields, &env)) {
+    pktserial.send(tx_buf, s.bytes_written);
+  }
+}
+#endif  // any sensor feature
+
+
+// ------ Packet Handler ------
+static void onPacket(const uint8_t *buffer, size_t size) {
+  /*
+  Receive a packet from the Jetson
+  */
+
+  if (!buffer || size == 0) return;
+
+  Envelope env = Envelope_init_default;
+  pb_istream_t in = pb_istream_from_buffer(buffer, size);
+  if (!pb_decode(&in, Envelope_fields, &env)) {
     return;
   }
-  if(g_rc_kil || hardware_estop) {
-    state = 0;
-  } else {
-    int ctr_state = rcInput.get_ctr_state();
-    if(ctr_state == RCInput::ControlState::autonomous) {
-      state = 2;
-    } else if(ctr_state == RCInput::ControlState::remote_control) {
-      state = 1;
-    } else if (ctr_state == RCInput::ControlState::calibration) {
-      state = 3;
-    } else {
-      state = 0;
-    }
-  }
-  // return state;
-  g_state = state;
-}
 
-static void send_status(){
-  uint8_t payload[32];
-  Status msg = Status_init_default;
-  msg.control_state = g_state;
-  msg.port = g_ros_peff;
-  msg.stbd = g_ros_seff;
+  switch (env.which_payload) {
 
-  pb_ostream_t out = pb_ostream_from_buffer(payload,sizeof(payload));
-
-  if(!pb_encode_delimited(&out,Status_fields,&msg)){
-    // Serial.println("Error encoding Status!");
-  } else {
-    // Serial.println("Status Sent!");
-    pktserial.send(payload,out.bytes_written);
-  }
-}
-
-// Decode effort
-// static bool decode_effort(pb_istream_t *stream, const pb_field_t *field, void **arg) {
-//   size_t *idx = (size_t*)(*arg);
-  
-//   uint64_t u = 0;
-//   if(!pb_decode_varint(stream,&u)) {
-//     return false;
-//   }
-
-//   int32_t value = (int32_t)u;
-//   if(*idx < 2) {
-//     g_efforts[*idx] = value;
-//     (*idx)++;
-//   }
-//   g_ros_peff = g_efforts[0];
-//   g_ros_seff = g_efforts[1];
-//   return true;
-// }
-
-static bool serial_read(uint32_t timeout_ms = 100) {
-  uint32_t start = millis();
-
-  Command data = Command_init_zero;
-  pb_istream_t stream = pb_istream_from_buffer(g_buffer, sizeof(g_buffer));
-
-  if (pb_decode(&stream, Command_fields, &data)) {
-    g_ros_peff = data.port;
-    g_ros_seff = data.stbd;
-    return true;
-  } else {
-    // Serial.println("Error!");
-    return false;
-  }
-  // Serial.println((String)data.port);
-}
-
-static void read_hardware_estop() {
-  int pin_value = digitalRead(SERVO_6);
-
-  if (pin_value == HIGH) {
-    hardware_estop = true;
-  } else {
-    hardware_estop = false;
-  }
-}
-
-void set_motor_2x() {
-  int port = (g_rc_srg + g_rc_yaw);
-  int stbd = (g_rc_srg - g_rc_yaw);
-  float max_val = max(100, max(abs(port), abs(stbd))) / 100;
-  g_rc_peff = port / max_val;
-  g_rc_seff = stbd / max_val;
-}
-
-void exec_mode(int mode, bool killed) {
-  // Vehicle Logic
-  if (killed) {
-    delay(1);
-  } else {
-    if (mode == RCInput::ControlState::autonomous) {  // AUTONOMOUS
-      if (!g_armed) {
-        set_arm(true);
-        // Serial.println("AUTONOMOUS - ARMING");
+    case Envelope_motor_cmd_tag:
+    #if defined(HAS_MOTORS) && HAS_MOTORS
+      {
+        const MotorCommand &m = env.payload.motor_cmd;
+        motor_targets[0] = m.motor_1;
+        motor_targets[1] = m.motor_2;
+        motor_targets[2] = m.motor_3;
+        motor_targets[3] = m.motor_4;
+        motor_targets[4] = m.motor_5;
+        motor_targets[5] = m.motor_6;
+        motor_targets[6] = m.motor_7;
+        motor_targets[7] = m.motor_8;
+        last_cmd_ms = millis();
+        motors_set_all(motor_targets);
       }
-      port_throttle = throttle_convert((float)g_ros_peff);
-      stbd_throttle = throttle_convert((float)g_ros_seff);
-      // Serial.println("AUTONOMOUS");
-      // Serial.println(port_throttle);
-      digitalWrite(RED_LED, HIGH);
-      digitalWrite(YELLOW_LED, LOW);
-      digitalWrite(GREEN_LED, HIGH);
-    } else if (mode == RCInput::ControlState::calibration) {  // CALIBRATION
-      if (g_armed) {
-        set_arm(false);
-        // Serial.println("CALIBRATION - DISARMING");
-      }
-      rcInput.check_calibration_ready();
-      digitalWrite(RED_LED, HIGH);
-      digitalWrite(YELLOW_LED, HIGH);
-      digitalWrite(GREEN_LED, LOW);
-    } else if (mode == RCInput::ControlState::remote_control) {  // REMOTE CONTROL
-      if (!g_armed) {
-        set_arm(true);
-        // Serial.println("MANUAL - ARMING");
-      }
-      set_motor_2x();
-      port_throttle = throttle_convert((float)g_rc_peff);
-      stbd_throttle = throttle_convert((float)g_rc_seff);
-      digitalWrite(RED_LED, LOW);
-      digitalWrite(YELLOW_LED, HIGH);
-      digitalWrite(GREEN_LED, HIGH); // temporary
-    }
-  }
-}
+    #endif
+      break;
 
-uint8_t buffer[128];
+    case Envelope_indicator_cmd_tag:
+    #if defined(HAS_INDICATOR_LED) && HAS_INDICATOR_LED
+      {
+        const IndicatorLightCommand &c = env.payload.indicator_cmd;
 
-void onPacket(const uint8_t* buffer, size_t size) {
-  Command cmd = Command_init_zero;
-  pb_istream_t stream = pb_istream_from_buffer(buffer, size);
-  bool status = pb_decode(&stream, Command_fields, &cmd);
-  // Serial.println("HELP");
-  // Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
-  if (status) {
-    g_ros_peff = cmd.port;
-    g_ros_seff = cmd.stbd;
-  } else {
-    // Serial.println("Error!");
-    g_state = -1;
-  }
-  // Serial.println("=======================");
-  if(g_ready) {
-    send_status();
-    // Serial.println("========= STATUS ===");
-  } else {
-    send_firmware_version();
+        float r = c.r;
+        float g = c.g;
+        float b = c.b;
+        indicator_set_rgb(r, g, b);
+      }
+    #endif
+      break;
+
+    default:
+      break;
   }
 }
 
 
+// ------ Setup ------
 void setup() {
-  // Set all LEDs to be output and on
-  pinMode(RED_LED, OUTPUT);
-  digitalWrite(RED_LED, HIGH);  
-  pinMode(YELLOW_LED, OUTPUT);
-  digitalWrite(YELLOW_LED, HIGH);
-  pinMode(GREEN_LED, OUTPUT);
-  digitalWrite(GREEN_LED, HIGH);
-  pinMode(SERVO_6,INPUT_PULLUP);
-
-  // Serial.begin(115200);
-  pktserial.begin(115200);
+  pktserial.begin(BAUDRATE);
   pktserial.setPacketHandler(&onPacket);
 
-  // 
+  #if defined(HAS_MOTORS) && HAS_MOTORS
+    motors_init();
+  #endif
 
-  // Do we want to set a specific time that a status sent?
-  // read_hardware_estop();
-  // send_status();
+  #if defined(HAS_INDICATOR_LED) && HAS_INDICATOR_LED
+    setup_neopixel();
+  #endif 
 
-  g_servo1.attach();
-  g_servo2.attach();
-  g_servo3.attach();
-  g_servo4.attach();
-  g_servo5.attach();
+  #if defined(HAS_POWER_SENSING) && HAS_POWER_SENSING
+    power_sensing_init();
+  #endif
 
-  delay(2000);
-
-
-
-  // Turn off red to indicate microros transports
-  digitalWrite(GREEN_LED, LOW);  
-
-  // rcInput.calibrate();
-
-  SPI.begin();
-  pot.begin();
-
-  pot.setValue(0, MCP_POT_MIDDLE_VALUE);
-  pot.setValue(1, MCP_POT_MIDDLE_VALUE);
-  
-  
-
-  delay(500);
-  // Turn off yellow to indicate SPI, Pot, RC ready
-  Serial.println("======= CALIBRATION COMPLETE - RC READY =======");
-  digitalWrite(YELLOW_LED, LOW);
-
-  // Turn off green to indicate ROS entities created
-  digitalWrite(RED_LED, LOW);
+  delay(50); // Wait for things to configure before starting loop
 }
 
+
+// ------ Main Loop ------
 void loop() {
-  loop_time = millis();
-  read_hardware_estop();
+  static uint32_t last_telem_ms = 0;
+
   pktserial.update();
 
-  static size_t bytesRead = 0;
+  const uint32_t now = millis();
 
-  g_ready = true;
+  #if defined(HAS_MOTORS) && HAS_MOTORS
+    // Safety: timeout kills motors
+    if ((now - last_cmd_ms) > CMD_TIMEOUT_MS) {
+      motors_safe_stop();
+    }
+  #endif
 
-  // if(Serial.available()) {
-  //   // g_buffer = Serial.read();
-  //   update_buffer();
-  //   g_ready = serial_read();
-  //   Serial.printf("Port effort = %d, Stbd effort = %d\n", g_ros_peff, g_ros_seff);
-  //   if(g_ready) {
-  //     send_status();
-  //   } else {
-  //     send_firmware_version();
-  //   }
-  // }
+  // Telemetry send depending on active features
+  if ((now - last_telem_ms) >= TELEMETRY_PERIOD_MS) {
+    last_telem_ms = now;
 
-  rcInput.read();
-  g_rc_srg = rcInput.get_srg();
-  g_rc_swy = rcInput.get_swy();
-  g_rc_yaw = rcInput.get_yaw();
-  exec_mode(rcInput.get_ctr_state(), false);
-  // exec_mode(RCInput::ControlState::autonomous, false);
-  set_motor_throttles();
-  delay(50);  
+    #if BOARD_PRESTO
+
+      send_presto_state();
+
+    #elif BOARD_SENSOR
+
+      send_sensorb_state();
+
+    #endif
+  }
 }
