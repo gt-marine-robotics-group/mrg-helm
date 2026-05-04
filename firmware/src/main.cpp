@@ -109,14 +109,17 @@ void setup() {
 }
 
 void loop() {
-  loop_time = millis();
+  // loop_time = millis();
  
-  rcInput.read();
-  g_rc_srg = rcInput.get_srg();
-  g_rc_swy = rcInput.get_swy();
-  g_rc_yaw = rcInput.get_yaw();
+  // rcInput.read();
+  // g_rc_srg = rcInput.get_srg();
+  // g_rc_swy = rcInput.get_swy();
+  // g_rc_yaw = rcInput.get_yaw();
 
-  exec_mode(rcInput.get_ctr_state(), false);
+  // exec_mode(rcInput.get_ctr_state(), false);
   
-  set_motor_throttles();
+  // set_motor_throttles();
+  char read = 'h';
+  Serial.println(read);
+  delay(100);
 }
